@@ -3,19 +3,43 @@ const express = require('express');
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 const Passport  = require('passport');
+const LocalStrategy = require('passport-local').Strategy
 const cors = require('cors');
 
-var User = require('../models/users');
-var Weapon = require('../models/weapon');
-var Equipment = require('../models/equipment');
-var mongoose = require('mongoose');
+const User = require('../models/users');
+const Weapon = require('../models/weapon');
+const Equipment = require('../models/equipment');
+const mongoose = require('mongoose');
 require('dotenv').config();
+
+
 const app = express();
 const uri = process.env.ATLAS_URI;
 const store = new MongoDBStore({
   uri: uri,
   collection: 'mySessions'
-})
+});
+Passport.use(new LocalStrategy(
+  (username, password, done) => {
+    console.log('Inside local strategy callback')
+    app.get('/user/:id', (req,res) => {
+      var db = req.db;
+      User.findById(req.params.id, 'username password email', function(error, user){
+        if(error) {console.error(error);}
+        if(user.username === username && user.password === password){
+          console.log('credentials matched')
+
+        }
+      });
+    });
+  }
+))
+
+Passport.serializeUser((user, done) => {
+  console.log('Inside serializeUser callback. User id is save to the session file store here')
+  done(null, user.id);
+});
+
 store.on('error',function(error){
   console.log(error)
 });
@@ -34,7 +58,8 @@ app.use(express.json(), session({
   resave: true,
   saveUninitialized: true
 }));
-
+app.use(Passport.initialize());
+app.use(Passport.session());
 
 console.log(uri)
 mongoose.connect(uri, { useNewUrlParser: true, useCreateIndex: true, useUnifiedTopology: true }
@@ -156,6 +181,27 @@ app.delete('/post/:id', (req, res) =>{
       success: true
     })
   })
+})
+
+app.get('/login', (req, res) => {
+  console.log('Inside GET /login callback')
+  console.log(req.sessionID)
+  res.send('You got the login page!')
+});
+
+app.post('/login', (req, res, next) => {
+  console.log('Inside POST /login callback')
+  Passport.authenticate('local', (err, user, info) => {
+    console.log('Inside passport.authenticate() callback');
+    console.log(`req.session.passport: ${JSON.stringify(req.session.Passport)}`)
+    console.log(`req.user: ${JSON.stringify(req.user)}`)
+    req.login(user, (err) => {
+      console.log('Inside req.login() callback')
+      console.log(`req.session.passport: ${JSON.stringify(req.session.Passport)}`)
+      console.log(`req.user: ${JSON.stringify(req.user)}`)
+      return res.send('You were authenticated & logged in!\n');
+    })
+  })(req, res, next);
 })
 
 app.listen(port, () => {
