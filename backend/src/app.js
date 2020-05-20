@@ -1,52 +1,69 @@
-const bodyParser = require('body-parser');
 const express = require('express');
+const uuid = require('uuid/v4')
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
+const bodyParser = require('body-parser');
 const Passport  = require('passport');
 const LocalStrategy = require('passport-local').Strategy
+const axios = require('axios')
 const cors = require('cors');
 
 const User = require('../models/users');
 const Weapon = require('../models/weapon');
 const Equipment = require('../models/equipment');
 const mongoose = require('mongoose');
+
 require('dotenv').config();
 
+Passport.use(new LocalStrategy(
+  (username, password, done) => {
+    console.log('Inside local strategy callback')
+    console.log(username)
+    axios.get(`http://localhost:8081/users`)
+    .then(res => {
+      console.log('axios worked')
+      console.log(res.data.users[0])
+      const user = res.data.users[0]
+      if (!user) {
+        console.log('no user')
+        return done(null, false, { message: 'Invalid credentials.\n' });
+      }
+      if (password != user.password) {
+        return done(null, false, { message: 'Invalid credentials.\n' });
+      }
+      console.log('successfully stored user')
+      return done(null, user);
+    })
+    .catch(error => done(error));
+    // app.get('/users?username=${username}', (req,res) => {
+    //   res => {
+    //     console.log(res.user)
+    //   }
+    // });
+  }
+))
 
 const app = express();
 const uri = process.env.ATLAS_URI;
+
 const store = new MongoDBStore({
   uri: uri,
   collection: 'mySessions'
 });
-Passport.use(new LocalStrategy(
-  (username, password, done) => {
-    console.log('Inside local strategy callback')
-    app.get('/user/:id', (req,res) => {
-      var db = req.db;
-      User.findById(req.params.id, 'username password email', function(error, user){
-        if(error) {console.error(error);}
-        if(user.username === username && user.password === password){
-          console.log('credentials matched')
-
-        }
-      });
-    });
-  }
-))
-
-Passport.serializeUser((user, done) => {
-  console.log('Inside serializeUser callback. User id is save to the session file store here')
-  done(null, user.id);
-});
-
 store.on('error',function(error){
   console.log(error)
 });
 
-const port = process.env.PORT || 8081
 
+
+
+const port = process.env.PORT || 8081
+app.use(bodyParser.urlencoded({ extended: false }))
+app.use(bodyParser.json())
 app.use(express.json(), session({
+  genid: (req) => {
+    return uuid() // use UUIDs for session IDs
+  },
   secret: 'This is a secret',
   cookie: {
     maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
@@ -55,20 +72,33 @@ app.use(express.json(), session({
   // Boilerplate options, see:
   // * https://www.npmjs.com/package/express-session#resave
   // * https://www.npmjs.com/package/express-session#saveuninitialized
-  resave: true,
+  resave: false,
   saveUninitialized: true
 }));
 app.use(Passport.initialize());
 app.use(Passport.session());
 
-console.log(uri)
+Passport.serializeUser((user, done) => {
+  done(null, user._id);
+});
+
+Passport.deserializeUser((id, done) => {
+  User.findById(id, function(err, user) {
+    done(err, user);
+}); 
+});
+
 mongoose.connect(uri, { useNewUrlParser: true, useCreateIndex: true, useUnifiedTopology: true }
 );
+
 const connection = mongoose.connection;
+
 connection.once('open', () => {
   console.log("MongoDB database connection established successfully");
 })
+
 app.use(cors());
+
 app.post('/equipment', (req, res) =>{
   const db = req.db;
   let itemType = req.body.itemType;
@@ -117,7 +147,7 @@ app.get('/equipment', (req, res) => {
 app.get('/users', (req, res) => {
   // res.send('Hello ' + JSON.stringify(req.session));
   console.log(req.session)
-  User.find({}, 'username email', function(error, users){
+  User.find({}, 'username email password', function(error, users){
     if(error){console.error(error); }
     res.send({
       users: users
@@ -190,18 +220,29 @@ app.get('/login', (req, res) => {
 });
 
 app.post('/login', (req, res, next) => {
-  console.log('Inside POST /login callback')
+  console.log('inside login post')
   Passport.authenticate('local', (err, user, info) => {
-    console.log('Inside passport.authenticate() callback');
-    console.log(`req.session.passport: ${JSON.stringify(req.session.Passport)}`)
-    console.log(`req.user: ${JSON.stringify(req.user)}`)
+    console.log("The info is:" + info)
+    console.log("User again:" + user)
+    if(info) {return res.send(info.message)}
+    if (err) { return next(err); }
+    if (!user) { return res.redirect('/login'); }
     req.login(user, (err) => {
       console.log('Inside req.login() callback')
-      console.log(`req.session.passport: ${JSON.stringify(req.session.Passport)}`)
-      console.log(`req.user: ${JSON.stringify(req.user)}`)
-      return res.send('You were authenticated & logged in!\n');
+      console.log(user)
+      if (err) { return next(err); }
+      return res.redirect('/authrequired');
     })
   })(req, res, next);
+})
+app.get('/authrequired', (req, res) => {
+  console.log('Inside GET /authrequired callback')
+  console.log(`User authenticated? ${req.isAuthenticated()}`)
+  if(req.isAuthenticated()) {
+    res.send('you hit the authentication endpoint\n')
+  } else {
+    res.redirect('/')
+  }
 })
 
 app.listen(port, () => {
