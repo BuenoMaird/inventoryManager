@@ -18,6 +18,9 @@ export default {
   },
   deleteUser (id) {
     return Api().delete(`user/${id}`)
+  },
+  sessionUser (params){
+    return Api().post(`login`, params)
   }
 
 }

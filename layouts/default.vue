@@ -23,6 +23,7 @@
           </v-list-item-content>
         </v-list-item>
       </v-list>
+      
     </v-navigation-drawer>
     <v-app-bar
       :clipped-left="clipped"
@@ -56,6 +57,13 @@
       >
         <v-icon>mdi-menu</v-icon>
       </v-btn>
+      <div v-if="$auth.loggedIn">
+        <p>{{$auth.user.email}}</p>
+        <v-btn>logout</v-btn>
+      </div>
+      <div v-else>
+        <v-btn>login</v-btn>
+      </div>
     </v-app-bar>
     <v-content>
       <v-container>

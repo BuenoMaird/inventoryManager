@@ -16,30 +16,23 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 Passport.use(new LocalStrategy(
+  { usernameField: 'email' },
   (username, password, done) => {
     console.log('Inside local strategy callback')
     console.log(username)
-    axios.get(`http://localhost:8081/users`)
-    .then(res => {
-      console.log('axios worked')
-      console.log(res.data.users[0])
-      const user = res.data.users[0]
+    User.findOne({email: username}, function(err, user){
+      console.log('Finding the user in local strategy = ' + user)
       if (!user) {
         console.log('no user')
         return done(null, false, { message: 'Invalid credentials.\n' });
       }
       if (password != user.password) {
+        console.log('password wrong')
         return done(null, false, { message: 'Invalid credentials.\n' });
       }
       console.log('successfully stored user')
       return done(null, user);
     })
-    .catch(error => done(error));
-    // app.get('/users?username=${username}', (req,res) => {
-    //   res => {
-    //     console.log(res.user)
-    //   }
-    // });
   }
 ))
 
@@ -66,7 +59,10 @@ app.use(express.json(), session({
   },
   secret: 'This is a secret',
   cookie: {
-    maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
+    domain: 'http://localhost:3000',
+    httpOnly: true, 
+    secure: false, 
+    maxAge: null 
   },
   store: store,
   // Boilerplate options, see:
@@ -79,13 +75,15 @@ app.use(Passport.initialize());
 app.use(Passport.session());
 
 Passport.serializeUser((user, done) => {
+  console.log('Inside serializeUser callback. User id is saved to the session file store here')
   done(null, user._id);
 });
 
 Passport.deserializeUser((id, done) => {
-  User.findById(id, function(err, user) {
-    done(err, user);
-}); 
+  console.log('Inside deserializeUser callback')
+  console.log(`The user id passport saved in the session file store is: ${id}`)
+  const user = User.findById(id, function (err, user) {});
+  done(null, user);
 });
 
 mongoose.connect(uri, { useNewUrlParser: true, useCreateIndex: true, useUnifiedTopology: true }
@@ -96,8 +94,22 @@ const connection = mongoose.connection;
 connection.once('open', () => {
   console.log("MongoDB database connection established successfully");
 })
-
-app.use(cors());
+var allowedOrigins = ['http://localhost:3000', 'http://yourapp.com'];
+app.use(cors({
+  origin: function(origin, callback){
+    console.log(`cors origin = ${origin}`)
+    // allow requests with no origin 
+    // (like mobile apps or curl requests)
+    if(!origin) return callback(null, true);
+    if(allowedOrigins.indexOf(origin) === -1){
+      var msg = 'The CORS policy for this site does not ' +
+                'allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+}));
 
 app.post('/equipment', (req, res) =>{
   const db = req.db;
@@ -145,8 +157,8 @@ app.get('/equipment', (req, res) => {
   }).sort({_id:-1})
 })
 app.get('/users', (req, res) => {
+  console.log(`User authenticated? ${req.isAuthenticated()}`)
   // res.send('Hello ' + JSON.stringify(req.session));
-  console.log(req.session)
   User.find({}, 'username email password', function(error, users){
     if(error){console.error(error); }
     res.send({
@@ -175,6 +187,7 @@ app.post('/users', (req, res) => {
   })
 })
 app.get('/user/:id', (req,res) => {
+  console.log(req)
   var db = req.db;
   User.findById(req.params.id, 'username password email', function(error, user){
     if(error) {console.error(error);}
@@ -212,24 +225,38 @@ app.delete('/post/:id', (req, res) =>{
     })
   })
 })
-
+app.get('/sessionUser', (req, res) =>{
+  let user = User.findOne({email: req.params.email}, function(err, user){
+    if(err){console.error(err); }
+    console.log(user)
+    res.send({user: user})
+  })
+})
 app.get('/login', (req, res) => {
   console.log('Inside GET /login callback')
   console.log(req.sessionID)
   res.send('You got the login page!')
 });
 
+// app.post('/login', (req, res) =>{
+//   let user = User.find({email: req.body.email}, function(err, user){
+//     res.send({token: req.sessionID})
+//   })
+  
+// })
+
+//App.post without NUXT
 app.post('/login', (req, res, next) => {
-  console.log('inside login post')
   Passport.authenticate('local', (err, user, info) => {
     console.log("The info is:" + info)
-    console.log("User again:" + user)
+    console.log("User again:" + user.email)
     if(info) {return res.send(info.message)}
     if (err) { return next(err); }
     if (!user) { return res.redirect('/login'); }
     req.login(user, (err) => {
       console.log('Inside req.login() callback')
       console.log(user)
+      console.log(`is authenticated  ${req.isAuthenticated()}`)
       if (err) { return next(err); }
       return res.redirect('/authrequired');
     })
@@ -241,7 +268,10 @@ app.get('/authrequired', (req, res) => {
   if(req.isAuthenticated()) {
     res.send('you hit the authentication endpoint\n')
   } else {
-    res.redirect('/')
+    console.log('redirecting to home')
+    // console.log(req)
+    res.send(req.session)
+    // res.redirect('http://localhost:3000/users')
   }
 })
 
