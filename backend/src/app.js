@@ -37,6 +37,7 @@ Passport.use(new LocalStrategy(
 ))
 
 const app = express();
+app.set('trust proxy', 1)
 const uri = process.env.ATLAS_URI;
 
 const store = new MongoDBStore({
@@ -53,23 +54,24 @@ store.on('error',function(error){
 const port = process.env.PORT || 8081
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
-app.use(express.json(), session({
+app.use(session({
   genid: (req) => {
     return uuid() // use UUIDs for session IDs
   },
   secret: 'This is a secret',
   cookie: {
-    domain: 'http://localhost:3000',
+    domain:'127.0.0.1:3000',
+    path: "localhost:3000/login",
     httpOnly: true, 
     secure: false, 
-    maxAge: null 
+    maxAge: 60000000
   },
   store: store,
   // Boilerplate options, see:
   // * https://www.npmjs.com/package/express-session#resave
   // * https://www.npmjs.com/package/express-session#saveuninitialized
   resave: false,
-  saveUninitialized: true
+  saveUninitialized: false
 }));
 app.use(Passport.initialize());
 app.use(Passport.session());
@@ -255,11 +257,14 @@ app.post('/login', (req, res, next) => {
     if (!user) { return res.redirect('/login'); }
     req.login(user, (err) => {
       console.log('Inside req.login() callback')
-      console.log(user)
+      // console.log(req.headers)
       console.log(`is authenticated  ${req.isAuthenticated()}`)
       if (err) { return next(err); }
+      console.log(`session ID =  ${req.sessionID}`)
+      // res.cookie('connect.sid', `${req.sessionID}`)
       return res.redirect('/authrequired');
     })
+    
   })(req, res, next);
 })
 app.get('/authrequired', (req, res) => {
