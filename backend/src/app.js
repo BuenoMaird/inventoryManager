@@ -48,9 +48,6 @@ store.on('error',function(error){
   console.log(error)
 });
 
-
-
-
 const port = process.env.PORT || 8081
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
@@ -60,8 +57,6 @@ app.use(session({
   },
   secret: 'This is a secret',
   cookie: {
-    domain:'127.0.0.1:3000',
-    path: "localhost:3000/login",
     httpOnly: true, 
     secure: false, 
     maxAge: 60000000
@@ -262,7 +257,8 @@ app.post('/login', (req, res, next) => {
       if (err) { return next(err); }
       console.log(`session ID =  ${req.sessionID}`)
       // res.cookie('connect.sid', `${req.sessionID}`)
-      return res.redirect('/authrequired');
+      // return res.redirect('/authrequired');
+      return res.send(user.username)
     })
     
   })(req, res, next);
@@ -271,7 +267,7 @@ app.get('/authrequired', (req, res) => {
   console.log('Inside GET /authrequired callback')
   console.log(`User authenticated? ${req.isAuthenticated()}`)
   if(req.isAuthenticated()) {
-    res.send('you hit the authentication endpoint\n')
+    console.log(res)
   } else {
     console.log('redirecting to home')
     // console.log(req)

@@ -15,6 +15,7 @@ export default{
   methods: {
     async loginUser(loginInfo){
        const response = await UsersService.sessionUser(loginInfo);
+        debugger
       return{ users: response.data.users} 
     }
 
